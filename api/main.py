@@ -5,8 +5,20 @@ from sqlalchemy.orm import Session
 from model import *
 from database import SessionLocal,engin
 from schemas import *
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 # Fast api 생성
 app = FastAPI()
+
+# CORS(Cross-Origin Resource Sharing) 설정
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins = ["http://127.0.0.1:5000",'http://localhost:5000'], # flask 주소 허용
+    allow_credentials=True,
+    allow_methods=['*'],
+    allow_headers=['*']
+)
+
 # 앱을 실행하면 DB에 정의된 모든 테이블을 생성
 Base.metadata.create_all(bind=engin)
 
@@ -16,25 +28,36 @@ def get_db():
         yield db # 종속된 함수에 세션 주입
     finally:
         db.close()  # 요청이 끝나면 자동으로 세션 종료
-# 회원가입용 데이터타입  pydantic 
-class RegisterRequest(BaseModel):
-    username: str
-    email: str
-    passowrd: str
+
+
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request
+
+# 템플릿 디렉토리 설정
+# pip install jinja2
+# fastapi 방식으로 화면을 랜더랑 사용.
+# templates = Jinja2Templates(directory="templates")
+# @app.get("/", response_class=HTMLResponse)
+# def index(request: Request):
+#     return templates.TemplateResponse("index.html", {"request": request})
+     
 
 # 라우터(요청에 응답하는)
 @app.post('/api/register')
 def register_user(user: RegisterRequest, db:Session=Depends(get_db)):
     # 같은 사용자가 있는지 조회
-    existing_user =  db.query(User).filter(User.username == user.username).first()
+    existing_user =  db.query(User)\
+        .filter(User.username == user.username, User.email == user.email)\
+        .first()
     # 같은 사용자가 있으면  400에러로 응답
     if existing_user:
         raise HTTPException(status_code=400, detail="이미 존재하는 사용자입니다.")
-    # 새 유저에대한 객체(인스턴스) 생성성
+    # 새 유저에대한 객체(인스턴스) 생성
     new_user =  User(
         username = user.username,
         email = user.email,
-        password = user.passowrd
+        password = user.password
     )
     # db commit하는 과정과 동일
     db.add(new_user)
@@ -123,7 +146,11 @@ def place_order(order: OrderRequest, db:Session=Depends(get_db)):
     db.commit()
     return {"success":True, 'message':'주문이 완료 되었습니다'}
 #주문 목록 조회
-@app.get('api/order', response_model=List[OrderOut])
+@app.get('/api/order', response_model=List[OrderOut])
 def get_orders(user_id:int = Query(...),db:Session=Depends(get_db)):
     orders = db.query(Order).filter(Order.user_id == user_id).all()
     return orders
+
+# 정적 HTML 파일 서빙
+# FAST api 방식
+# app.mount("/", StaticFiles(directory="templates", html=True), name="static")
